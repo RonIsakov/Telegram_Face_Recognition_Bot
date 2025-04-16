@@ -118,7 +118,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             except Exception as e:
                 print(f"⚠️ Failed to plot {item['name']}: {e}")
 
-        ax.set_title("t-SNE of Celeb + Uploaded Faces")
+        for spine in ax.spines.values():
+            spine.set_visible(False)
+
+        #ax.set_title("t-SNE of Celeb + Uploaded Faces")
         ax.set_xticks([])
         ax.set_yticks([])
         plt.tight_layout()
