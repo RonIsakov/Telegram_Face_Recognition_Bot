@@ -83,3 +83,9 @@ instance/
 #venue
 .venv310/
 venv310/
+
+#celebs
+/celebs/
+*.jpg
+*.jpeg
+
