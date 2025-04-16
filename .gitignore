@@ -79,3 +79,7 @@ instance/
 .cache/
 *.swp
 *.swo
+
+#venue
+.venv310/
+venv310/
