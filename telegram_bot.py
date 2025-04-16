@@ -1,6 +1,6 @@
 import os
 from dotenv import load_dotenv
-from telegram import Update, ReplyKeyboardMarkup, KeyboardButton, InputFile
+from telegram import Update, ReplyKeyboardMarkup, InputFile
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, ContextTypes, filters
 import face_recognition
 import io
@@ -25,10 +25,10 @@ user_states = {}
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("Welcome! What would you like to do?", reply_markup=markup)
 
-# Handle button clicks and messages
+# Handle button clicks and text input
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.message.from_user.id
-    text = update.message.text
+    text = update.message.text.strip()
 
     if text == 'Add face':
         user_states[user_id] = {'state': 'awaiting_face_image'}
@@ -40,8 +40,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         known_faces.clear()
         await update.message.reply_text("All known faces have been reset.", reply_markup=markup)
     elif user_id in user_states and user_states[user_id].get('state') == 'awaiting_name':
-        # Save name + last uploaded encoding
-        name = text.strip()
+        name = text
         encoding = user_states[user_id]['last_encoding']
         known_faces.append({'name': name, 'encoding': encoding})
         user_states.pop(user_id)
@@ -49,7 +48,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         await update.message.reply_text("Please choose one of the options using the buttons below.", reply_markup=markup)
 
-# Handle incoming photos
+# Handle incoming photo uploads
 async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.message.from_user.id
     if user_id not in user_states:
@@ -88,6 +87,11 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 name = known_faces[index]['name']
             names.append(name)
 
+        if all(name == "Unknown" for name in names):
+            await update.message.reply_text("I don't recognize anyone in this image.", reply_markup=markup)
+            user_states.pop(user_id)
+            return
+
         # Draw results
         pil_img = Image.fromarray(image)
         draw = ImageDraw.Draw(pil_img)
@@ -95,7 +99,7 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
             draw.rectangle(((left, top), (right, bottom)), outline="blue", width=2)
             draw.text((left + 6, bottom - 10), name, fill="blue")
 
-        # Send back result
+        # Send back result image
         output = io.BytesIO()
         pil_img.save(output, format='PNG')
         output.seek(0)
