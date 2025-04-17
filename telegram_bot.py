@@ -9,6 +9,8 @@ import numpy as np
 from sklearn.manifold import TSNE
 import matplotlib.pyplot as plt
 from matplotlib.offsetbox import OffsetImage, AnnotationBbox
+from datetime import datetime
+
 
 # Load environment variables
 load_dotenv()
@@ -20,7 +22,8 @@ menu_keyboard = [
     ['Recognize faces'],
     ['Reset faces'],
     ['Similar celebs'],
-    ['map']
+    ['map'],
+    ['history']
 ]
 markup = ReplyKeyboardMarkup(menu_keyboard, resize_keyboard=True)
 
@@ -28,6 +31,8 @@ markup = ReplyKeyboardMarkup(menu_keyboard, resize_keyboard=True)
 known_faces = []       # [{'name':str, 'encoding':np.array, 'pil_image': PIL.Image}]
 user_states = {}       # {user_id: {'state':str, ...}}
 celeb_encodings = []   # [{'name':str, 'image_path':str, 'encoding':np.array}]
+face_log = []  # each entry: {'name': str, 'type': str, 'timestamp': datetime, 'image': PIL.Image}
+
 
 def load_celeb_faces(folder_name='celebs'):
     base = os.path.join(os.path.dirname(__file__), folder_name)
@@ -136,10 +141,14 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         await update.message.reply_photo(photo=buf, caption="🗺️ Here's your face similarity map!", reply_markup=markup)
 
+    elif(text == 'history'):
+        await show_history(update, context)
+
     elif user_id in user_states and user_states[user_id].get('state') == 'awaiting_name':
         enc = user_states[user_id]['last_encoding']
         img = user_states[user_id]['last_image']
         known_faces.append({'name': text, 'encoding': enc, 'pil_image': img})
+        face_log[user_states[user_id]['log_index']]['name'] = text
         user_states.pop(user_id)
         await update.message.reply_text("Face saved! What next?", reply_markup=markup)
     else:
@@ -163,10 +172,21 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if len(encs) != 1:
             await update.message.reply_text("Please send exactly one face.")
             return
+        
+        pil_img = Image.fromarray(img)
+        face_log.append({
+            'name': 'Unknown',
+            'type': 'add_face',
+            'timestamp': datetime.now(),
+            'image': pil_img
+        })
+        log_index = len(face_log) - 1  # Save its position
+
         user_states[user_id] = {
             'state': 'awaiting_name',
             'last_encoding': encs[0],
-            'last_image': Image.fromarray(img).copy()
+            'last_image': Image.fromarray(img).copy(),
+            'log_index': log_index
         }
         await update.message.reply_text("Great—what’s this person’s name?")
 
@@ -174,9 +194,20 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         locs = face_recognition.face_locations(img)
         encs = face_recognition.face_encodings(img, locs)
         names = []
-        for e in encs:
+        for e, (top, right, bottom, left) in zip(encs, locs):
             matches = face_recognition.compare_faces([kf['encoding'] for kf in known_faces], e, tolerance=0.5)
-            names.append(known_faces[matches.index(True)]['name'] if True in matches else "Unknown")
+            name = known_faces[matches.index(True)]['name'] if True in matches else "Unknown"
+            names.append(name)
+
+            if name != "Unknown":
+                face_img = Image.fromarray(img[top:bottom, left:right])
+                face_log.append({
+                    'name': name,
+                    'type': 'recognize',
+                    'timestamp': datetime.now(),
+                    'image': face_img
+                })
+
 
         if all(n == "Unknown" for n in names):
             await update.message.reply_text("I don't recognize anyone here.", reply_markup=markup)
@@ -215,6 +246,27 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         user_states.pop(user_id)
 
+    
+from datetime import datetime  # Ensure this is already imported
+async def show_history(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not face_log:
+        await update.message.reply_text("📭 No faces logged yet.")
+        return
+
+    # Show only last 10 entries
+    recent = face_log[-10:]
+
+    for entry in recent:
+        buf = io.BytesIO()
+        entry['image'].save(buf, format='PNG')
+        buf.seek(0)
+        caption = f"🧠 {entry['type'].capitalize()} - {entry['name']}\n🕒 {entry['timestamp'].strftime('%Y-%m-%d %H:%M:%S')}"
+        await update.message.reply_photo(photo=buf, caption=caption)
+
+
+    
+
+
 if __name__ == '__main__':
     print("Loading celeb database…")
     load_celeb_faces()
@@ -223,5 +275,6 @@ if __name__ == '__main__':
     app.add_handler(CommandHandler("start", start))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     app.add_handler(MessageHandler(filters.PHOTO, handle_photo))
+    app.add_handler(CommandHandler("history", show_history))
     print("Bot running—press Ctrl+C to stop.")
     app.run_polling()
