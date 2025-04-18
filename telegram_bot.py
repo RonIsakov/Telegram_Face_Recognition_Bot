@@ -76,6 +76,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Upload an image with faces; I'll identify anyone I know.")
     elif text == 'Reset faces':
         known_faces.clear()
+        face_log.clear()
         await update.message.reply_text("Reset complete—no faces remembered.", reply_markup=markup)
     elif text == 'Similar celebs':
         user_states[user_id] = {'state': 'awaiting_similar_celeb_image'}
@@ -119,7 +120,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 im = OffsetImage(img, zoom=1)
                 ab = AnnotationBbox(im, (x, y), frameon=False, box_alignment=(0.5, 1))
                 ax.add_artist(ab)
-                ax.text(x, y - 13, item['name'], fontsize=6, ha='center', va='top', color='black')
+                ax.text(x, y - 10, item['name'], fontsize=6, ha='center', va='top', color='black')
             except Exception as e:
                 print(f"⚠️ Failed to plot {item['name']}: {e}")
 
@@ -271,6 +272,7 @@ if __name__ == '__main__':
     print("Loading celeb database…")
     load_celeb_faces()
     print(f"Loaded {len(celeb_encodings)} celeb faces.")
+    face_log.clear()  # Clear log on bot startup
     app = ApplicationBuilder().token(TOKEN).build()
     app.add_handler(CommandHandler("start", start))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
